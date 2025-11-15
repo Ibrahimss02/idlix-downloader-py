@@ -19,9 +19,9 @@ if getattr(sys, 'frozen', False):
             os.environ['CURL_CA_BUNDLE'] = cert_path
             os.environ['SSL_CERT_FILE'] = cert_path
             os.environ['REQUESTS_CA_BUNDLE'] = cert_path
-            print(f"✓ SSL certificates loaded from: {cert_path}")
+            print(f"[OK] SSL certificates loaded from: {cert_path}")
             break
     else:
         # If not found, disable SSL verification (not recommended but prevents crashes)
         os.environ['CURL_CA_BUNDLE'] = ''
-        print("⚠ Warning: SSL certificates not found, verification may fail")
+        print("[WARNING] SSL certificates not found, verification may fail")
