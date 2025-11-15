@@ -45,10 +45,11 @@ def exception_handler(exc_type, exc_value, exc_traceback):
         print(f"\nOriginal error: {exc_type.__name__}: {exc_value}")
         traceback.print_exception(exc_type, exc_value, exc_traceback)
     
-    # Keep window open
-    input("\nPress Enter to exit...")
+    # Don't wait for input in non-interactive environments
+    if sys.stdin and sys.stdin.isatty():
+        input("\nPress Enter to exit...")
 
 # Install exception handler
 sys.excepthook = exception_handler
 
-print("✓ Crash logging enabled - errors will be saved to idlix_crash.log")
+print("[OK] Crash logging enabled - errors will be saved to idlix_crash.log")
