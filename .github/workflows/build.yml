@@ -1,0 +1,127 @@
+name: Build Executables
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller
+        
+    - name: Download FFmpeg
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+        Expand-Archive -Path "ffmpeg.zip" -DestinationPath "." -Force
+        Move-Item -Path "ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe" -Destination "."
+        Remove-Item -Recurse -Force "ffmpeg-master-latest-win64-gpl"
+        Remove-Item "ffmpeg.zip"
+      shell: pwsh
+      
+    - name: Create PyInstaller spec
+      run: python create_spec_windows.py
+      
+    - name: Build executable
+      run: pyinstaller --clean idlix_windows.spec
+      
+    - name: Test executable
+      run: |
+        dist\idlix-downloader.exe --help
+      continue-on-error: true
+      
+    - name: Upload Windows executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: idlix-downloader-windows
+        path: dist/idlix-downloader.exe
+        retention-days: 30
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --break-system-packages curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller
+        
+    - name: Download FFmpeg
+      run: |
+        wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+        tar -xf ffmpeg-release-amd64-static.tar.xz
+        cp ffmpeg-*-static/ffmpeg .
+        rm -rf ffmpeg-*-static*
+        chmod +x ffmpeg
+        
+    - name: Build executable
+      run: |
+        chmod +x build_executable.sh
+        ./build_executable.sh
+        
+    - name: Test executable
+      run: |
+        ./dist/idlix-downloader --help
+      continue-on-error: true
+      
+    - name: Upload Linux executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: idlix-downloader-linux
+        path: dist/idlix-downloader
+        retention-days: 30
+
+  create-release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download Windows artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: idlix-downloader-windows
+        path: ./windows
+        
+    - name: Download Linux artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: idlix-downloader-linux
+        path: ./linux
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          windows/idlix-downloader.exe
+          linux/idlix-downloader
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
