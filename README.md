@@ -191,7 +191,7 @@ M3U8 URLs expire after ~30 minutes. Re-extract if expired:
 
 ## License
 
-MIT License - Free to use and modify
+Apache License
 
 ## Notes
 
