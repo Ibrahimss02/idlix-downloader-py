@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# PyInstaller
+build/
+dist/
+*.spec
+*.manifest
+
+# Backup files
+*.bak
+*_old.py
+*_original.py
+
+# FFmpeg binary
+ffmpeg
+ffmpeg.exe
+
+# Logs
+*.log
+idlix_crash.log
+
+# Cache
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
