@@ -77,10 +77,10 @@ exe = EXE(
 )
 """
 
-with open('idlix_windows.spec', 'w') as f:
+with open('idlix_windows.spec', 'w', encoding='utf-8') as f:
     f.write(spec_content)
 
-print('✓ Spec file created: idlix_windows.spec')
-print('✓ Using custom hooks directory for curl_cffi')
-print('✓ Added certifi runtime hook to set CA bundle path')
-print('✓ Added crash handler runtime hook')
+print('[OK] Spec file created: idlix_windows.spec')
+print('[OK] Using custom hooks directory for curl_cffi')
+print('[OK] Added certifi runtime hook to set CA bundle path')
+print('[OK] Added crash handler runtime hook')

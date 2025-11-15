@@ -807,7 +807,7 @@ echo "✓ Code updated"
 
 # Build executable
 echo -e "\n[5/5] Building executable..."
-$HOME/.local/bin/pyinstaller --clean idlix.spec
+python -m PyInstaller --clean idlix.spec
 
 if [ -f "dist/idlix-downloader" ]; then
     echo -e "\n========================================="
