@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IDLIX Downloader</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>🎬 IDLIX Downloader</h1>
+      <p class="subtitle">Download videos with ease</p>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- URL Input Section -->
+      <section class="url-section card">
+        <h2>📝 Enter Video URL</h2>
+        <div class="input-group">
+          <input 
+            type="text" 
+            id="videoUrl" 
+            class="url-input" 
+            placeholder="https://idlix.example/movie/..."
+            autocomplete="off"
+          />
+          <button id="extractBtn" class="btn btn-primary">Extract</button>
+        </div>
+        <div id="extractStatus" class="status-message"></div>
+      </section>
+
+      <!-- Quality Selection Section -->
+      <section id="qualitySection" class="quality-section card" style="display: none;">
+        <h2>🎯 Select Quality</h2>
+        <div id="videoInfo" class="video-info"></div>
+        <div id="qualityOptions" class="quality-grid"></div>
+        <div class="download-config">
+          <div class="config-item">
+            <label for="downloadPath">📁 Download Location:</label>
+            <div class="path-input-group">
+              <input 
+                type="text" 
+                id="downloadPath" 
+                class="path-input" 
+                readonly 
+              />
+              <button id="browseBtn" class="btn btn-secondary">Browse</button>
+            </div>
+          </div>
+          <div class="config-item">
+            <label for="customFilename">📄 Filename (optional):</label>
+            <input 
+              type="text" 
+              id="customFilename" 
+              class="text-input" 
+              placeholder="Leave empty for auto-generated name"
+            />
+          </div>
+        </div>
+        <button id="downloadBtn" class="btn btn-success" disabled>
+          Start Download
+        </button>
+      </section>
+
+      <!-- Downloads Queue Section -->
+      <section class="downloads-section card">
+        <h2>📥 Download Queue</h2>
+        <div id="downloadsList" class="downloads-list">
+          <p class="empty-state">No active downloads</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Settings Panel (Optional) -->
+    <div id="settingsPanel" class="settings-panel" style="display: none;">
+      <h3>⚙️ Settings</h3>
+      <div class="settings-content">
+        <div class="setting-item">
+          <label>Default Download Path:</label>
+          <input type="text" id="settingsDownloadPath" readonly />
+          <button id="settingsBrowseBtn" class="btn btn-sm">Change</button>
+        </div>
+        <div class="setting-item">
+          <label>Download Threads:</label>
+          <input type="number" id="settingsThreads" min="1" max="32" value="16" />
+        </div>
+      </div>
+      <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
+      <button id="closeSettingsBtn" class="btn btn-secondary">Close</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

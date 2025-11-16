@@ -223,8 +223,15 @@ class IDLIXDownloader:
         except Exception as e:
             raise Exception(f"Failed to get M3U8 info: {e}")
     
-    def download_video(self, stream_url, output_path, threads=16):
-        """Download video using multi-threaded segment downloading with caching"""
+    def download_video(self, stream_url, output_path, threads=16, progress_callback=None):
+        """Download video using multi-threaded segment downloading with caching
+        
+        Args:
+            stream_url: M3U8 stream URL
+            output_path: Output file path
+            threads: Number of download threads
+            progress_callback: Optional callback function(progress_dict) for progress updates
+        """
         cache_dir = None
         temp_dir = None
         global keep_cache
@@ -235,7 +242,8 @@ class IDLIXDownloader:
             if output_dir and output_dir != ".":
                 os.makedirs(output_dir, exist_ok=True)
 
-            print(f"\n✓ Preparing download...")
+            if not progress_callback:
+                print(f"\n✓ Preparing download...")
             
             # Parse M3U8 to get segments
             playlist = m3u8.load(stream_url)
@@ -261,12 +269,14 @@ class IDLIXDownloader:
                     cached_count += 1
             
             if cached_count > 0:
-                print(f"✓ Found {cached_count}/{total_segments} cached segments - resuming download")
+                if not progress_callback:
+                    print(f"✓ Found {cached_count}/{total_segments} cached segments - resuming download")
             
-            print(f"✓ Total segments: {total_segments}")
-            print(f"✓ Downloading with {threads} threads...")
-            print(f"✓ Cache: {cache_dir}")
-            print(f"✓ Output: {output_path}\n")
+            if not progress_callback:
+                print(f"✓ Total segments: {total_segments}")
+                print(f"✓ Downloading with {threads} threads...")
+                print(f"✓ Cache: {cache_dir}")
+                print(f"✓ Output: {output_path}\n")
             
             # Register cache dir (but won't delete if keep_cache is True)
             global cleanup_dirs
@@ -342,12 +352,27 @@ class IDLIXDownloader:
                                 mb_downloaded = bytes_dl / (1024 * 1024)
                                 dl_speed = (bytes_dl - progress.get('initial_bytes', 0)) / (1024 * 1024) / elapsed if elapsed > 0 else 0
                                 
-                                # Progress bar
-                                bar_length = 40
-                                filled = int(bar_length * percent / 100)
-                                bar = '█' * filled + '░' * (bar_length - filled)
-                                
-                                print(f'\r[{bar}] {percent:.1f}% | {downloaded}/{total_segments} | {speed:.1f} seg/s | {dl_speed:.2f} MB/s | ETA: {int(eta)}s    ', end='', flush=True)
+                                # Send progress update via callback if provided
+                                if progress_callback:
+                                    progress_callback({
+                                        'status': 'downloading',
+                                        'percent': percent,
+                                        'downloaded_segments': downloaded,
+                                        'total_segments': total_segments,
+                                        'failed_segments': progress['failed'],
+                                        'speed_mbps': dl_speed,
+                                        'speed_segments': speed,
+                                        'eta_seconds': int(eta),
+                                        'bytes_downloaded': bytes_dl,
+                                        'errors': progress['errors'].copy()
+                                    })
+                                else:
+                                    # Progress bar for CLI
+                                    bar_length = 40
+                                    filled = int(bar_length * percent / 100)
+                                    bar = '█' * filled + '░' * (bar_length - filled)
+                                    
+                                    print(f'\r[{bar}] {percent:.1f}% | {downloaded}/{total_segments} | {speed:.1f} seg/s | {dl_speed:.2f} MB/s | ETA: {int(eta)}s    ', end='', flush=True)
                             
                             return True
                         else:
@@ -379,7 +404,21 @@ class IDLIXDownloader:
                     queue.put((idx, segment))
             
             if queue.qsize() == 0:
-                print("✓ All segments already cached!\n")
+                if not progress_callback:
+                    print("✓ All segments already cached!\n")
+                else:
+                    progress_callback({
+                        'status': 'downloading',
+                        'percent': 100.0,
+                        'downloaded_segments': total_segments,
+                        'total_segments': total_segments,
+                        'failed_segments': 0,
+                        'speed_mbps': 0.0,
+                        'speed_segments': 0.0,
+                        'eta_seconds': 0,
+                        'bytes_downloaded': progress['bytes_downloaded'],
+                        'errors': []
+                    })
             else:
                 def worker():
                     while not queue.empty() and not progress['cancelled']:
@@ -409,28 +448,58 @@ class IDLIXDownloader:
                 for t in thread_list:
                     t.join()
                 
-                print("\n")
+                if not progress_callback:
+                    print("\n")
             
             if progress['cancelled']:
                 return False
             
             # Show error summary if any failed
             if progress['failed'] > 0:
-                print(f"\n✗ Failed to download {progress['failed']} segments")
-                print(f"\nError details (showing first 10):")
-                for error in progress['errors'][:10]:
-                    print(f"  • {error}")
-                if len(progress['errors']) > 10:
-                    print(f"  ... and {len(progress['errors']) - 10} more errors")
-                print(f"\n✓ Cache preserved - run again to retry failed segments")
+                if progress_callback:
+                    progress_callback({
+                        'status': 'failed',
+                        'percent': (progress['downloaded'] / total_segments) * 100,
+                        'downloaded_segments': progress['downloaded'],
+                        'total_segments': total_segments,
+                        'failed_segments': progress['failed'],
+                        'speed_mbps': 0.0,
+                        'speed_segments': 0.0,
+                        'eta_seconds': 0,
+                        'bytes_downloaded': progress['bytes_downloaded'],
+                        'errors': progress['errors']
+                    })
+                else:
+                    print(f"\n✗ Failed to download {progress['failed']} segments")
+                    print(f"\nError details (showing first 10):")
+                    for error in progress['errors'][:10]:
+                        print(f"  • {error}")
+                    if len(progress['errors']) > 10:
+                        print(f"  ... and {len(progress['errors']) - 10} more errors")
+                    print(f"\n✓ Cache preserved - run again to retry failed segments")
                 return False
             
             if progress['downloaded'] != total_segments:
-                print(f"\n✗ Download incomplete: {progress['downloaded']}/{total_segments} segments")
-                print(f"✓ Cache preserved - run again to resume")
+                if not progress_callback:
+                    print(f"\n✗ Download incomplete: {progress['downloaded']}/{total_segments} segments")
+                    print(f"✓ Cache preserved - run again to resume")
                 return False
             
-            print(f"✓ All segments downloaded, merging...")
+            if progress_callback:
+                progress_callback({
+                    'status': 'merging',
+                    'percent': 100.0,
+                    'downloaded_segments': total_segments,
+                    'total_segments': total_segments,
+                    'failed_segments': 0,
+                    'speed_mbps': 0.0,
+                    'speed_segments': 0.0,
+                    'eta_seconds': 0,
+                    'bytes_downloaded': progress['bytes_downloaded'],
+                    'errors': []
+                })
+            else:
+                print(f"✓ All segments downloaded, merging...")
             
             # Merge segments using ffmpeg from cache
             concat_file = os.path.join(cache_dir, "concat.txt")
@@ -456,7 +525,8 @@ class IDLIXDownloader:
                 output_path
             ]
             
-            print(f"Merging {total_segments} segments...\n")
+            if not progress_callback:
+                print(f"Merging {total_segments} segments...\n")
             result = subprocess.run(merge_cmd, text=True)
             
             if result.returncode == 0:
@@ -468,11 +538,26 @@ class IDLIXDownloader:
                     actual_bytes = progress['bytes_downloaded'] - progress['initial_bytes']
                     avg_speed = (actual_bytes / (1024 * 1024)) / elapsed if elapsed > 0 and actual_bytes > 0 else 0
                     
-                    print(f"\n✓ Download completed: {output_path}")
-                    print(f"✓ File size: {file_size:.2f} MB")
-                    if avg_speed > 0:
-                        print(f"✓ Average speed: {avg_speed:.2f} MB/s")
-                    print(f"✓ Time elapsed: {int(elapsed)}s")
+                    if progress_callback:
+                        progress_callback({
+                            'status': 'completed',
+                            'percent': 100.0,
+                            'downloaded_segments': total_segments,
+                            'total_segments': total_segments,
+                            'failed_segments': 0,
+                            'speed_mbps': avg_speed,
+                            'speed_segments': 0.0,
+                            'eta_seconds': 0,
+                            'bytes_downloaded': progress['bytes_downloaded'],
+                            'file_size': int(file_size * 1024 * 1024),
+                            'errors': []
+                        })
+                    else:
+                        print(f"\n✓ Download completed: {output_path}")
+                        print(f"✓ File size: {file_size:.2f} MB")
+                        if avg_speed > 0:
+                            print(f"✓ Average speed: {avg_speed:.2f} MB/s")
+                        print(f"✓ Time elapsed: {int(elapsed)}s")
                     
                     # Cleanup cache after successful merge
                     import shutil
@@ -480,21 +565,25 @@ class IDLIXDownloader:
                         cleanup_dirs.remove(cache_dir)
                     keep_cache = False  # Allow cleanup
                     shutil.rmtree(cache_dir, ignore_errors=True)
-                    print(f"✓ Cache cleaned")
+                    if not progress_callback:
+                        print(f"✓ Cache cleaned")
                     
                     return True
                 else:
-                    print(f"\n✗ Merge failed: File is empty or doesn't exist")
+                    if not progress_callback:
+                        print(f"\n✗ Merge failed: File is empty or doesn't exist")
                     return False
             else:
-                print(f"\n✗ Merge failed (ffmpeg error code: {result.returncode})")
+                if not progress_callback:
+                    print(f"\n✗ Merge failed (ffmpeg error code: {result.returncode})")
                 return False
 
         except KeyboardInterrupt:
             # Keep cache for resume
             raise
         except Exception as e:
-            print(f"\n✗ Download error: {e}")
+            if not progress_callback:
+                print(f"\n✗ Download error: {e}")
             return False
 
 # Helper functions for interactive mode
@@ -642,8 +731,45 @@ def main():
     parser.add_argument('-t', '--threads', type=int, default=16, help='Number of download threads (default: 16)')
     parser.add_argument('--json', action='store_true', help='Output JSON with all variants')
     parser.add_argument('--auto', action='store_true', help='Auto-select highest quality')
+    parser.add_argument('--api-server', action='store_true', help='Run as API server for Electron integration')
+    parser.add_argument('--port', type=int, default=0, help='API server port (0 = auto-assign, default: 0)')
     
     args = parser.parse_args()
+    
+    # API server mode
+    if args.api_server:
+        try:
+            import uvicorn
+            from backend.api_server import app
+            
+            # Find a free port if port is 0
+            if args.port == 0:
+                import socket
+                sock = socket.socket()
+                sock.bind(('127.0.0.1', 0))
+                port = sock.getsockname()[1]
+                sock.close()
+            else:
+                port = args.port
+            
+            # Output port info for Electron to parse
+            print(json.dumps({"status": "ready", "port": port}), flush=True)
+            
+            # Run uvicorn server
+            uvicorn.run(
+                app,
+                host="127.0.0.1",
+                port=port,
+                log_level="warning",
+                access_log=False
+            )
+            return
+        except ImportError as e:
+            print(json.dumps({"status": "error", "message": f"API dependencies not installed: {e}"}), flush=True)
+            sys.exit(1)
+        except Exception as e:
+            print(json.dumps({"status": "error", "message": str(e)}), flush=True)
+            sys.exit(1)
     
     # If no URL provided, run interactive mode
     if not args.url:
