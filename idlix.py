@@ -174,8 +174,11 @@ class IDLIXDownloader:
 
             m3u8_url = video_data.get('securedLink')
 
-            # Parse M3U8 playlist - use m3u8.load() directly like reference implementation
-            playlist = m3u8.load(m3u8_url)
+            # Parse M3U8 playlist - fetch with session to avoid SSL errors
+            m3u8_response = self.session.get(m3u8_url)
+            if m3u8_response.status_code != 200:
+                raise Exception(f"Failed to fetch M3U8 (status {m3u8_response.status_code})")
+            playlist = m3u8.loads(m3u8_response.text, uri=m3u8_url)
 
             variants = []
             if playlist.playlists:
@@ -290,8 +293,8 @@ class IDLIXDownloader:
                 vtt_path = f"{safe_name}.vtt"
                 srt_path = f"{safe_name}.srt"
                 
-                # Download VTT file
-                subtitle_response = requests.get(subtitle_url, timeout=30)
+                # Download VTT file with SSL verification disabled
+                subtitle_response = requests.get(subtitle_url, timeout=30, verify=False)
                 if subtitle_response.status_code == 200:
                     with open(vtt_path, 'wb') as f:
                         f.write(subtitle_response.content)
@@ -369,8 +372,11 @@ class IDLIXDownloader:
                 "Origin": "https://jeniusplay.com"
             }
             
-            # Load M3U8 playlist - use m3u8.load() directly like reference
-            playlist = m3u8.load(stream_url)
+            # Load M3U8 playlist - fetch with session to avoid SSL errors
+            m3u8_response = self.session.get(stream_url)
+            if m3u8_response.status_code != 200:
+                raise Exception(f"Failed to fetch M3U8 (status {m3u8_response.status_code})")
+            playlist = m3u8.loads(m3u8_response.text, uri=stream_url)
             
             if not playlist.segments:
                 raise Exception("No segments found in M3U8 playlist")
