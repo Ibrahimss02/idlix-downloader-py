@@ -17,12 +17,14 @@ import time
 import signal
 import atexit
 import hashlib
+import requests
 from queue import Queue
 from urllib.parse import urlparse, unquote
 from curl_cffi import requests as cffi_requests
 from bs4 import BeautifulSoup
 import m3u8
 import pyperclip
+from vtt_to_srt.vtt_to_srt import ConvertFile
 from crypto_helper import CryptoJsAes, dec
 
 
@@ -78,7 +80,8 @@ class IDLIXDownloader:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
-            }
+            },
+            verify=False  # Disable SSL verification to avoid certificate issues
         )
         
     def extract_embed_url(self, page_url):
@@ -171,7 +174,7 @@ class IDLIXDownloader:
 
             m3u8_url = video_data.get('securedLink')
 
-            # Parse M3U8 playlist
+            # Parse M3U8 playlist - use m3u8.load() directly like reference implementation
             playlist = m3u8.load(m3u8_url)
 
             variants = []
@@ -182,9 +185,14 @@ class IDLIXDownloader:
                     bandwidth = p.stream_info.bandwidth if p.stream_info.bandwidth else 0
 
                     # Build full URL for the variant
+                    # Follow reference: keep URI as-is and prepend jeniusplay.com if needed
                     if p.uri.startswith('http'):
                         stream_url = p.uri
+                    elif p.uri.startswith('/'):
+                        # Absolute path - prepend domain only
+                        stream_url = 'https://jeniusplay.com' + p.uri
                     else:
+                        # Relative path - use base URL
                         base = m3u8_url.rsplit('/', 1)[0]
                         stream_url = f"{base}/{p.uri}"
 
@@ -223,6 +231,115 @@ class IDLIXDownloader:
         except Exception as e:
             raise Exception(f"Failed to get M3U8 info: {e}")
     
+    def get_subtitle(self, embed_url, video_name, download=True):
+        """Fetch subtitle from jeniusplay.com player API
+        
+        Args:
+            embed_url: Embed URL from IDLIX  
+            video_name: Video name for file naming
+            download: If True, download and convert to SRT; if False, return URL only
+            
+        Returns:
+            dict: {'status': bool, 'subtitle': str (path or URL), 'message': str}
+        """
+        try:
+            # Extract data parameter from embed URL
+            if '/video/' in urlparse(embed_url).path:
+                data_param = urlparse(embed_url).path.split('/')[2]
+            elif '?data=' in embed_url:
+                data_param = urlparse(embed_url).query.split('=')[1]
+            else:
+                data_param = embed_url
+            
+            # Use POST request to the API (same as get_m3u8_info but parse HTML response)
+            response = self.session.post(
+                url='https://jeniusplay.com/player/index.php',
+                params={"data": data_param, "do": "getVideo"},
+                headers={
+                    "Host": "jeniusplay.com",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                },
+                data={"hash": data_param, "r": self.base_url},
+                impersonate="chrome"
+            )
+            
+            if response.status_code != 200:
+                return {
+                    'status': False,
+                    'message': f'Failed to fetch subtitle info (status {response.status_code})'
+                }
+            
+            # The response might be HTML with JavaScript or JSON - check both
+            # Try to find subtitle in the text response
+            regex_subtitle = re.search(r'var playerjsSubtitle = "(.*?)";', response.text)
+            
+            if not regex_subtitle:
+                return {
+                    'status': False,
+                    'message': 'Subtitle not found in response'
+                }
+            
+            # Extract and clean subtitle URL
+            subtitle_url = regex_subtitle.group(1)
+            if "https://" in subtitle_url:
+                subtitle_url = "https://" + subtitle_url.split("https://")[1]
+            
+            if download:
+                # Sanitize filename
+                safe_name = re.sub(r'[<>:"/\\|?*]', '', video_name).replace(' ', '_')
+                vtt_path = f"{safe_name}.vtt"
+                srt_path = f"{safe_name}.srt"
+                
+                # Download VTT file
+                subtitle_response = requests.get(subtitle_url, timeout=30)
+                if subtitle_response.status_code == 200:
+                    with open(vtt_path, 'wb') as f:
+                        f.write(subtitle_response.content)
+                    
+                    # Convert VTT to SRT
+                    self.convert_vtt_to_srt(vtt_path)
+                    
+                    # Clean up VTT file
+                    if os.path.exists(vtt_path):
+                        os.remove(vtt_path)
+                    
+                    return {
+                        'status': True,
+                        'subtitle': srt_path,
+                        'message': 'Subtitle downloaded and converted'
+                    }
+                else:
+                    return {
+                        'status': False,
+                        'message': f'Failed to download subtitle (status {subtitle_response.status_code})'
+                    }
+            else:
+                # Return URL only
+                return {
+                    'status': True,
+                    'subtitle': subtitle_url,
+                    'message': 'Subtitle URL retrieved'
+                }
+                
+        except Exception as e:
+            return {
+                'status': False,
+                'message': f'Error fetching subtitle: {str(e)}'
+            }
+    
+    @staticmethod
+    def convert_vtt_to_srt(vtt_file):
+        """Convert VTT subtitle file to SRT format
+        
+        Args:
+            vtt_file: Path to VTT file
+        """
+        try:
+            convert_file = ConvertFile(vtt_file, "utf-8")
+            convert_file.convert()
+        except Exception as e:
+            print(f"Warning: Subtitle conversion failed: {e}")
+    
     def download_video(self, stream_url, output_path, threads=16, progress_callback=None):
         """Download video using multi-threaded segment downloading with caching
         
@@ -245,7 +362,14 @@ class IDLIXDownloader:
             if not progress_callback:
                 print(f"\n✓ Preparing download...")
             
-            # Parse M3U8 to get segments
+            # Parse M3U8 to get segments - use our session for proper headers
+            m3u8_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+                "Referer": "https://jeniusplay.com/",
+                "Origin": "https://jeniusplay.com"
+            }
+            
+            # Load M3U8 playlist - use m3u8.load() directly like reference
             playlist = m3u8.load(stream_url)
             
             if not playlist.segments:
@@ -322,13 +446,11 @@ class IDLIXDownloader:
                             segment_url = f"{base_url}/{segment.uri}"
                         
                         # Download segment
-                        # Download segment with SSL verification disabled if in frozen app
-                        verify_ssl = not getattr(sys, 'frozen', False)
                         response = cffi_requests.get(
                             segment_url,
                             impersonate=random.choice(["chrome124", "chrome119", "chrome104"]),
                             timeout=30,
-                            verify=verify_ssl
+                            verify=False  # Disable SSL verification
                         )
                         
                         if response.status_code == 200:
@@ -678,6 +800,14 @@ def interactive_mode():
         
         print(f"\n✓ M3U8 URL: {selected['url']}")
         
+        # Check for subtitles
+        print(f"\n✓ Checking for subtitles...")
+        subtitle_info = downloader.get_subtitle(embed_url, video_title, download=False)
+        if subtitle_info['status']:
+            print(f"✓ Subtitles available")
+        else:
+            print(f"✗ Subtitles not available: {subtitle_info['message']}")
+        
         # Action menu
         print(f"\nWhat would you like to do?")
         print(f"[1] Copy M3U8 URL to clipboard")
@@ -695,9 +825,36 @@ def interactive_mode():
                 
                 elif choice == "2":
                     output_path = get_output_filename(video_title)
+                    
+                    # Download subtitle if available
+                    subtitle_path = None
+                    if subtitle_info['status']:
+                        print(f"\n✓ Downloading subtitle...")
+                        subtitle_dir = os.path.dirname(output_path) or "./"
+                        safe_title = re.sub(r'[<>:"/\\|?*]', '', video_title).replace(' ', '_')
+                        subtitle_output = os.path.join(subtitle_dir, f"{safe_title}.srt")
+                        
+                        subtitle_result = downloader.get_subtitle(embed_url, video_title, download=True)
+                        if subtitle_result['status']:
+                            # Move subtitle to output directory
+                            if os.path.exists(subtitle_result['subtitle']):
+                                if subtitle_result['subtitle'] != subtitle_output:
+                                    os.makedirs(subtitle_dir, exist_ok=True)
+                                    import shutil
+                                    shutil.move(subtitle_result['subtitle'], subtitle_output)
+                                else:
+                                    subtitle_output = subtitle_result['subtitle']
+                                subtitle_path = subtitle_output
+                                print(f"✓ Subtitle saved: {subtitle_path}")
+                        else:
+                            print(f"✗ Subtitle download failed: {subtitle_result['message']}")
+                    
+                    # Download video
                     success = downloader.download_video(selected['url'], output_path, threads=16)
                     if success:
                         print(f"\n✓ Video saved successfully!")
+                        if subtitle_path:
+                            print(f"✓ Subtitle saved successfully!")
                     sys.exit(0 if success else 1)
                 
                 elif choice == "3":
@@ -731,6 +888,7 @@ def main():
     parser.add_argument('-t', '--threads', type=int, default=16, help='Number of download threads (default: 16)')
     parser.add_argument('--json', action='store_true', help='Output JSON with all variants')
     parser.add_argument('--auto', action='store_true', help='Auto-select highest quality')
+    parser.add_argument('--no-subtitles', action='store_true', help='Skip subtitle download')
     parser.add_argument('--api-server', action='store_true', help='Run as API server for Electron integration')
     parser.add_argument('--port', type=int, default=0, help='API server port (0 = auto-assign, default: 0)')
     
@@ -829,6 +987,27 @@ def main():
             filename = f"{safe_title}.mp4"
         
         output_path = os.path.join(args.output, filename)
+        
+        # Download subtitle if not disabled
+        if not args.no_subtitles:
+            print(f"\n✓ Checking for subtitles...")
+            subtitle_result = downloader.get_subtitle(embed_url, video_title, download=True)
+            if subtitle_result['status']:
+                # Move subtitle to output directory
+                subtitle_dir = os.path.dirname(output_path) or "./"
+                safe_title = re.sub(r'[<>:"/\\|?*]', '', video_title).replace(' ', '_')
+                subtitle_output = os.path.join(subtitle_dir, f"{safe_title}.srt")
+                
+                if os.path.exists(subtitle_result['subtitle']):
+                    if subtitle_result['subtitle'] != subtitle_output:
+                        os.makedirs(subtitle_dir, exist_ok=True)
+                        import shutil
+                        shutil.move(subtitle_result['subtitle'], subtitle_output)
+                    else:
+                        subtitle_output = subtitle_result['subtitle']
+                    print(f"✓ Subtitle saved: {subtitle_output}")
+            else:
+                print(f"✗ Subtitles not available: {subtitle_result['message']}")
         
         # Download
         success = downloader.download_video(selected['url'], output_path, threads=args.threads)
