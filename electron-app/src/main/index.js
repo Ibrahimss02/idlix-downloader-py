@@ -76,10 +76,10 @@ function startBackend() {
     
     backendProcess.on('close', (code) => {
       console.log(`Backend process exited with code ${code}`);
-      backendReady = false;
       if (!backendReady) {
         reject(new Error(`Backend process exited with code ${code}`));
       }
+      backendReady = false;
     });
     
     backendProcess.on('error', (err) => {
