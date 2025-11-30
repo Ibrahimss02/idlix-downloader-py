@@ -41,7 +41,14 @@
     "extraResources": [
       {
         "from": "../dist/idlix-downloader",
-        "to": "backend/idlix-downloader"
+        "to": "backend/idlix-downloader",
+        "filter": ["!*.exe"],
+        "os": ["linux", "mac"]
+      },
+      {
+        "from": "../dist/idlix-downloader.exe",
+        "to": "backend/idlix-downloader.exe",
+        "os": ["win"]
       }
     ],
     "win": {
