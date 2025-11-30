@@ -301,7 +301,7 @@ async function handleDownload() {
   }
   
   // Validate and sanitize filename
-  let sanitizedFilename = customFilename;
+  let sanitizedFilename;
   if (customFilename) {
     // Remove invalid filename characters
     sanitizedFilename = customFilename.replace(/[<>:"/\\|?*]/g, '');
