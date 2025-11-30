@@ -227,18 +227,20 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         path: artifacts
+    
+    - name: Display artifact structure
+      run: ls -R artifacts/
         
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          artifacts/backend-windows/idlix-downloader.exe
-          artifacts/backend-linux/idlix-downloader
-          artifacts/backend-macos/idlix-downloader
-          artifacts/electron-windows/*.exe
-          artifacts/electron-linux/*.AppImage
-          artifacts/electron-linux/*.deb
-          artifacts/electron-macos/*.dmg
+          artifacts/backend-windows/*
+          artifacts/backend-linux/*
+          artifacts/backend-macos/*
+          artifacts/electron-windows/*
+          artifacts/electron-linux/*
+          artifacts/electron-macos/*
         draft: false
         prerelease: false
         generate_release_notes: true
