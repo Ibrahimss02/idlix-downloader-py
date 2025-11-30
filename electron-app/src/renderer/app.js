@@ -8,10 +8,10 @@ let pollingIntervals = new Map();
 // Initialize app
 async function init() {
   try {
-    // Get backend URL
-    backendUrl = await window.electronAPI.getBackendUrl();
+    // Get backend URL with retry logic
+    backendUrl = await getBackendUrlWithRetry();
     if (!backendUrl) {
-      showError('Backend not ready. Please restart the application.');
+      showError('Backend failed to start. Please check the console and restart the application.');
       return;
     }
     
@@ -33,6 +33,23 @@ async function init() {
   }
 }
 
+// Get backend URL with retry logic
+async function getBackendUrlWithRetry(maxRetries = 10, delayMs = 500) {
+  for (let i = 0; i < maxRetries; i++) {
+    const url = await window.electronAPI.getBackendUrl();
+    if (url) {
+      return url;
+    }
+    
+    if (i < maxRetries - 1) {
+      showLoading(`Waiting for backend to start... (${i + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  
+  return null;
+}
+
 // Setup event listeners
 function setupEventListeners() {
   document.getElementById('extractBtn').addEventListener('click', handleExtract);
@@ -48,7 +65,51 @@ function setupEventListeners() {
   });
   
   document.getElementById('downloadBtn').addEventListener('click', handleDownload);
+  
+  // Settings panel listeners
+  document.getElementById('settingsBtn').addEventListener('click', openSettings);
+  document.getElementById('closeSettingsBtn').addEventListener('click', closeSettings);
+  document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+  document.getElementById('settingsBrowseBtn').addEventListener('click', async () => {
+    const path = await window.electronAPI.selectDownloadDirectory();
+    if (path) {
+      document.getElementById('settingsDownloadPath').value = path;
+    }
+  });
 }
+
+// Open settings panel
+async function openSettings() {
+  const settings = await window.electronAPI.getSettings();
+  document.getElementById('settingsDownloadPath').value = settings.downloadPath;
+  document.getElementById('settingsThreads').value = settings.downloadThreads || 16;
+  document.getElementById('settingsPanel').style.display = 'block';
+}
+
+// Close settings panel
+function closeSettings() {
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+// Save settings
+async function saveSettings() {
+  const newSettings = {
+    downloadPath: document.getElementById('settingsDownloadPath').value,
+    downloadThreads: parseInt(document.getElementById('settingsThreads').value)
+  };
+  
+  await window.electronAPI.updateSettings(newSettings);
+  
+  // Update the main download path input
+  document.getElementById('downloadPath').value = newSettings.downloadPath;
+  
+  closeSettings();
+  showSuccess('Settings saved successfully!');
+  setTimeout(() => {
+    document.getElementById('extractStatus').style.display = 'none';
+  }, 2000);
+}
+
 
 // Show error message
 function showError(message) {
@@ -112,7 +173,17 @@ async function handleExtract() {
     
   } catch (error) {
     console.error('Extraction error:', error);
-    showError('Extraction failed: ' + error.message);
+    let errorMsg = 'Extraction failed. ';
+    if (error.message.includes('Failed to fetch')) {
+      errorMsg += 'Could not connect to backend server.';
+    } else if (error.message.includes('embed_url')) {
+      errorMsg += 'Could not find video embed URL. Check if the URL is valid.';
+    } else if (error.message.includes('status 404')) {
+      errorMsg += 'Video not found. Please check the URL.';
+    } else {
+      errorMsg += error.message;
+    }
+    showError(errorMsg);
   } finally {
     extractBtn.disabled = false;
     extractBtn.textContent = 'Extract';
@@ -160,9 +231,42 @@ async function loadVariants(jobId, videoTitle) {
     // Scroll to quality section
     qualitySection.scrollIntoView({ behavior: 'smooth' });
     
+    // Check subtitle availability
+    await checkSubtitleAvailability(jobId);
+    
   } catch (error) {
     console.error('Load variants error:', error);
     showError('Failed to load quality options: ' + error.message);
+  }
+}
+
+// Check subtitle availability
+async function checkSubtitleAvailability(jobId) {
+  try {
+    const response = await fetch(`${backendUrl}/api/subtitle/${jobId}`);
+    if (!response.ok) return;
+    
+    const data = await response.json();
+    const subtitleCheckbox = document.getElementById('downloadSubtitle');
+    const checkboxItem = subtitleCheckbox.closest('.checkbox-item');
+    
+    if (data.available) {
+      // Enable checkbox and show as available
+      subtitleCheckbox.disabled = false;
+      subtitleCheckbox.checked = true;
+      checkboxItem.style.display = 'block';
+      checkboxItem.querySelector('span').textContent = '📝 Download subtitle (available)';
+    } else {
+      // Disable checkbox and hide or show as unavailable
+      subtitleCheckbox.disabled = true;
+      subtitleCheckbox.checked = false;
+      checkboxItem.style.display = 'block';
+      checkboxItem.querySelector('span').textContent = '📝 Subtitle not available';
+    }
+  } catch (error) {
+    console.error('Subtitle check error:', error);
+    // Hide checkbox on error
+    document.getElementById('downloadSubtitle').closest('.checkbox-item').style.display = 'none';
   }
 }
 
@@ -187,12 +291,33 @@ async function handleDownload() {
     return;
   }
   
-  const downloadPath = document.getElementById('downloadPath').value;
+  const downloadPath = document.getElementById('downloadPath').value.trim();
   const customFilename = document.getElementById('customFilename').value.trim();
+  
+  // Validate download path
+  if (!downloadPath) {
+    showError('Please select a download location');
+    return;
+  }
+  
+  // Validate and sanitize filename
+  let sanitizedFilename = customFilename;
+  if (customFilename) {
+    // Remove invalid filename characters
+    sanitizedFilename = customFilename.replace(/[<>:"/\\|?*]/g, '');
+    if (sanitizedFilename !== customFilename) {
+      showError('Filename contains invalid characters. Using: ' + sanitizedFilename);
+      document.getElementById('customFilename').value = sanitizedFilename;
+      return;
+    }
+  }
   
   const downloadBtn = document.getElementById('downloadBtn');
   downloadBtn.disabled = true;
   downloadBtn.textContent = 'Starting...';
+  
+  // Get subtitle checkbox value
+  const downloadSubtitle = document.getElementById('downloadSubtitle').checked;
   
   try {
     const response = await fetch(`${backendUrl}/api/download`, {
@@ -203,7 +328,8 @@ async function handleDownload() {
         quality: selectedQuality.quality,
         output_path: downloadPath,
         filename: customFilename || null,
-        threads: 16
+        threads: 16,
+        download_subtitle: downloadSubtitle
       })
     });
     
@@ -281,13 +407,26 @@ function addDownloadToList(downloadId, quality) {
 
 // Start progress polling
 function startProgressPolling(downloadId) {
+  let failureCount = 0;
+  const maxFailures = 10; // Stop after 10 consecutive failures
+  
   const interval = setInterval(async () => {
     try {
       const response = await fetch(`${backendUrl}/api/progress/${downloadId}`);
       if (!response.ok) {
-        console.warn('Failed to fetch progress');
+        failureCount++;
+        console.warn(`Failed to fetch progress (${failureCount}/${maxFailures})`);
+        
+        if (failureCount >= maxFailures) {
+          console.error('Too many polling failures, stopping polling');
+          clearInterval(interval);
+          pollingIntervals.delete(downloadId);
+        }
         return;
       }
+      
+      // Reset failure count on success
+      failureCount = 0;
       
       const progress = await response.json();
       updateDownloadProgress(downloadId, progress);
@@ -299,7 +438,14 @@ function startProgressPolling(downloadId) {
       }
       
     } catch (error) {
-      console.error('Progress polling error:', error);
+      failureCount++;
+      console.error(`Progress polling error (${failureCount}/${maxFailures}):`, error);
+      
+      if (failureCount >= maxFailures) {
+        console.error('Too many polling errors, stopping polling');
+        clearInterval(interval);
+        pollingIntervals.delete(downloadId);
+      }
     }
   }, 500);
   
@@ -379,10 +525,22 @@ async function retryDownload(downloadId) {
     const response = await fetch(`${backendUrl}/api/resume/${downloadId}`, { method: 'POST' });
     if (response.ok) {
       console.log('Download resumed:', downloadId);
+      
+      // Update UI to show resuming state
+      const downloadItem = document.getElementById(`download-${downloadId}`);
+      if (downloadItem) {
+        downloadItem.querySelector('.download-status').textContent = 'Resuming...';
+      }
+      
       startProgressPolling(downloadId);
+    } else {
+      const error = await response.json();
+      console.error('Resume failed:', error);
+      showError('Resume failed: ' + (error.detail || 'Unknown error'));
     }
   } catch (error) {
     console.error('Retry error:', error);
+    showError('Failed to resume download: ' + error.message);
   }
 }
 
@@ -408,12 +566,28 @@ async function loadExistingDownloads() {
     
     const data = await response.json();
     
-    // Load incomplete downloads
+    // Load incomplete downloads and restore their state
     data.downloads.filter(d => 
       d.status !== 'completed' && d.status !== 'cancelled'
     ).forEach(download => {
       addDownloadToList(download.download_id, download.quality);
-      startProgressPolling(download.download_id);
+      
+      // Restore progress if available
+      if (download.progress) {
+        try {
+          const progress = typeof download.progress === 'string' 
+            ? JSON.parse(download.progress) 
+            : download.progress;
+          updateDownloadProgress(download.download_id, progress);
+        } catch (e) {
+          console.error('Failed to restore progress:', e);
+        }
+      }
+      
+      // Start polling for active downloads
+      if (download.status === 'downloading' || download.status === 'resuming') {
+        startProgressPolling(download.download_id);
+      }
     });
     
   } catch (error) {

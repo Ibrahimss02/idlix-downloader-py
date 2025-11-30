@@ -63,6 +63,7 @@ class DownloadRequest(BaseModel):
     output_path: str
     filename: Optional[str] = None
     threads: int = Field(16, ge=1, le=32)
+    download_subtitle: bool = Field(False, description="Download subtitle if available")
 
 
 class DownloadResponse(BaseModel):
@@ -214,6 +215,36 @@ async def get_video_variants(job_id: str):
     }
 
 
+@app.get("/api/subtitle/{job_id}")
+async def get_subtitle(job_id: str):
+    """Get subtitle information for a job"""
+    job = await get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    embed_url = job.get('embed_url')
+    if not embed_url:
+        raise HTTPException(status_code=400, detail="No embed URL found for this job")
+    
+    # Get subtitle info (URL only, don't download yet)
+    base_url = job.get('base_url')
+    downloader = IDLIXDownloader(base_url)
+    
+    subtitle_info = await asyncio.to_thread(
+        downloader.get_subtitle,
+        embed_url,
+        job.get('video_title', 'video'),
+        download=False
+    )
+    
+    return {
+        "job_id": job_id,
+        "available": subtitle_info['status'],
+        "subtitle_url": subtitle_info.get('subtitle') if subtitle_info['status'] else None,
+        "message": subtitle_info.get('message', '')
+    }
+
+
 @app.post("/api/download", response_model=DownloadResponse)
 async def start_download(request: DownloadRequest, background_tasks: BackgroundTasks):
     """Start a new download"""
@@ -291,9 +322,13 @@ async def start_download(request: DownloadRequest, background_tasks: BackgroundT
             run_download_task,
             download_id,
             job.get('base_url'),
+            job.get('embed_url'),
+            job.get('video_title'),
             selected_variant['url'],
             output_path,
-            request.threads
+            output_dir,
+            request.threads,
+            request.download_subtitle
         )
         
         return DownloadResponse(
@@ -308,36 +343,77 @@ async def start_download(request: DownloadRequest, background_tasks: BackgroundT
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def run_download_task(download_id: str, base_url: str, stream_url: str, 
-                            output_path: str, threads: int):
+async def run_download_task(download_id: str, base_url: str, embed_url: str,
+                            video_title: str, stream_url: str, output_path: str,
+                            output_dir: str, threads: int, download_subtitle: bool = False):
     """Run download task in background"""
     try:
         await update_download(download_id, status='downloading')
         
-        # Create progress callback
+        # Download subtitle if requested
+        subtitle_path = None
+        if download_subtitle:
+            try:
+                downloader = IDLIXDownloader(base_url)
+                subtitle_result = await asyncio.to_thread(
+                    downloader.get_subtitle,
+                    embed_url,
+                    video_title,
+                    download=True
+                )
+                
+                if subtitle_result['status'] and subtitle_result.get('subtitle'):
+                    # Move subtitle to output directory
+                    import shutil
+                    subtitle_file = subtitle_result['subtitle']
+                    if os.path.exists(subtitle_file):
+                        subtitle_dest = os.path.join(output_dir, os.path.basename(subtitle_file))
+                        if subtitle_file != subtitle_dest:
+                            shutil.move(subtitle_file, subtitle_dest)
+                            subtitle_path = subtitle_dest
+                        else:
+                            subtitle_path = subtitle_file
+                        print(f"✓ Subtitle downloaded: {subtitle_path}")
+            except Exception as e:
+                print(f"Warning: Subtitle download failed: {e}")
+        
+        # Create progress callback - using time.time() instead of event loop time
         last_db_update = [0]  # Mutable container for closure
+        loop = asyncio.get_event_loop()
         
         def progress_callback(progress_dict):
-            # Update in-memory progress
+            # Check for cancellation from API
+            if active_downloads[download_id].get('cancelled', False):
+                progress_dict['cancelled'] = True
+            
+            # Update in-memory progress (thread-safe for dict updates)
             active_downloads[download_id].update(progress_dict)
             
             # Update database every 5 seconds or on status change
-            current_time = asyncio.get_event_loop().time()
+            import time
+            current_time = time.time()
             if (current_time - last_db_update[0] > 5.0 or 
                 progress_dict.get('status') in ['completed', 'failed', 'merging']):
                 
                 last_db_update[0] = current_time
                 
-                # Schedule database update
-                asyncio.create_task(update_download(
-                    download_id,
-                    status=progress_dict.get('status', 'downloading'),
-                    downloaded_segments=progress_dict.get('downloaded_segments', 0),
-                    total_segments=progress_dict.get('total_segments', 0),
-                    failed_segments=progress_dict.get('failed_segments', 0),
-                    bytes_downloaded=progress_dict.get('bytes_downloaded', 0),
-                    progress_json=json.dumps(progress_dict)
-                ))
+                # Schedule database update in a thread-safe manner
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        update_download(
+                            download_id,
+                            status=progress_dict.get('status', 'downloading'),
+                            downloaded_segments=progress_dict.get('downloaded_segments', 0),
+                            total_segments=progress_dict.get('total_segments', 0),
+                            failed_segments=progress_dict.get('failed_segments', 0),
+                            bytes_downloaded=progress_dict.get('bytes_downloaded', 0),
+                            progress_json=json.dumps(progress_dict)
+                        ),
+                        loop
+                    )
+                except Exception as e:
+                    # Log error but don't stop download
+                    print(f"Warning: Failed to update progress in DB: {e}")
         
         # Run download in thread pool
         downloader = IDLIXDownloader(base_url)
@@ -353,9 +429,18 @@ async def run_download_task(download_id: str, base_url: str, stream_url: str,
         final_status = 'completed' if success else 'failed'
         active_downloads[download_id]['status'] = final_status
         
+        # Extract error message from progress if failed
+        error_message = None
+        if not success and active_downloads[download_id].get('errors'):
+            error_message = '\n'.join(active_downloads[download_id]['errors'])
+            # Log error to stderr for debugging
+            import sys
+            print(f"Download {download_id} failed: {error_message}", file=sys.stderr)
+        
         await update_download(
             download_id,
             status=final_status,
+            error_message=error_message,
             progress_json=json.dumps(active_downloads[download_id])
         )
         
@@ -429,10 +514,16 @@ async def resume_download(download_id: str, background_tasks: BackgroundTasks):
     if download['status'] not in ['interrupted', 'failed']:
         raise HTTPException(status_code=400, detail="Download is not in resumable state")
     
-    # Validate cache directory exists
+    # Validate cache directory exists and has segments
     cache_dir = download.get('cache_dir')
     if not cache_dir or not os.path.exists(cache_dir):
-        raise HTTPException(status_code=400, detail="Cache directory not found, cannot resume")
+        raise HTTPException(status_code=400, detail="Cache directory not found, cannot resume. Please start a new download.")
+    
+    # Count cached segments
+    import glob
+    cached_segments = glob.glob(os.path.join(cache_dir, "segment_*.ts"))
+    if len(cached_segments) == 0:
+        raise HTTPException(status_code=400, detail="No cached segments found, cannot resume. Please start a new download.")
     
     # Get job info
     job = await get_job(download['job_id'])
@@ -442,15 +533,24 @@ async def resume_download(download_id: str, background_tasks: BackgroundTasks):
     # Reset progress and restart download
     output_path = os.path.join(download['output_path'], download['filename'])
     
+    # Restore progress from database if available
+    restored_progress = {}
+    if download.get('progress'):
+        try:
+            import json
+            restored_progress = json.loads(download['progress']) if isinstance(download['progress'], str) else download['progress']
+        except:
+            pass
+    
     active_downloads[download_id] = {
         'status': 'resuming',
-        'percent': 0.0,
-        'downloaded_segments': 0,
-        'total_segments': 0,
+        'percent': restored_progress.get('percent', 0.0),
+        'downloaded_segments': restored_progress.get('downloaded_segments', len(cached_segments)),
+        'total_segments': restored_progress.get('total_segments', 0),
         'speed_mbps': 0.0,
         'speed_segments': 0.0,
         'eta_seconds': 0,
-        'bytes_downloaded': 0,
+        'bytes_downloaded': restored_progress.get('bytes_downloaded', 0),
         'errors': [],
         'output_path': output_path,
         'filename': download['filename']
@@ -458,14 +558,18 @@ async def resume_download(download_id: str, background_tasks: BackgroundTasks):
     
     await update_download(download_id, status='resuming')
     
-    # Start download in background
+    # Start download in background (no subtitle on resume)
     background_tasks.add_task(
         run_download_task,
         download_id,
         job['base_url'],
+        job.get('embed_url', ''),
+        job.get('video_title', 'video'),
         download['stream_url'],
         output_path,
-        16  # Default threads for resume
+        download['output_path'],
+        16,  # Default threads for resume
+        False  # Don't re-download subtitle on resume
     )
     
     return {"message": "Download resumed", "download_id": download_id}

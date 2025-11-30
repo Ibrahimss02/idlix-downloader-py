@@ -25,6 +25,16 @@ body {
   color: white;
   margin-bottom: 30px;
   padding: 20px 0;
+  position: relative;
+}
+
+/* footer */
+.footer {
+  text-align: center;
+  color: white;
+  margin-bottom: 30px;
+  padding: 20px 0;
+  position: relative;
 }
 
 .header h1 {
@@ -37,6 +47,25 @@ body {
 .subtitle {
   font-size: 1.1rem;
   opacity: 0.9;
+}
+
+.settings-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255,255,255,0.2);
+  border: 2px solid rgba(255,255,255,0.3);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.settings-btn:hover {
+  background: rgba(255,255,255,0.3);
+  transform: scale(1.05);
 }
 
 /* Cards */
@@ -229,6 +258,34 @@ body {
   color: #555;
 }
 
+.checkbox-item {
+  display: flex;
+  align-items: center;
+}
+
+.checkbox-item label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.checkbox-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.checkbox-item span {
+  font-weight: 500;
+}
+
 .path-input-group {
   display: flex;
   gap: 10px;
@@ -386,4 +443,65 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.5);
+}
+
+/* Settings Panel */
+.settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  z-index: 1000;
+  min-width: 500px;
+  max-width: 90%;
+}
+
+.settings-panel h3 {
+  color: #667eea;
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+}
+
+.settings-content {
+  margin-bottom: 20px;
+}
+
+.setting-item {
+  margin-bottom: 20px;
+}
+
+.setting-item label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.setting-item input[type="text"],
+.setting-item input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 1rem;
+  margin-bottom: 10px;
+}
+
+.setting-item input[type="text"]:focus,
+.setting-item input[type="number"]:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.settings-panel .btn {
+  margin-right: 10px;
+}
+
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 0.9rem;
 }

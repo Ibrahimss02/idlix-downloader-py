@@ -30,17 +30,33 @@ from crypto_helper import CryptoJsAes, dec
 
 # Get bundled FFmpeg path
 def get_ffmpeg_path():
-    """Get path to bundled FFmpeg executable"""
-    if getattr(sys, 'frozen', False):
-        # Running as compiled executable
+    """Get path to FFmpeg executable"""
+    if getattr(sys, 'frozen', False) and os.name == 'nt':
+        # Windows: use bundled ffmpeg
         bundle_dir = sys._MEIPASS
-        ffmpeg_path = os.path.join(bundle_dir, 'ffmpeg')
-        if os.name == 'nt':  # Windows
-            ffmpeg_path += '.exe'
-    else:
-        # Running as script
-        ffmpeg_path = 'ffmpeg'
-    return ffmpeg_path
+        ffmpeg_path = os.path.join(bundle_dir, 'ffmpeg.exe')
+        if os.path.exists(ffmpeg_path):
+            return ffmpeg_path
+    
+    # Linux/macOS: use system ffmpeg
+    # Check if ffmpeg is in PATH
+    import shutil
+    ffmpeg_path = shutil.which('ffmpeg')
+    if ffmpeg_path:
+        return ffmpeg_path
+    
+    # Fallback to common locations
+    common_paths = [
+        '/usr/bin/ffmpeg',
+        '/usr/local/bin/ffmpeg',
+        '/opt/homebrew/bin/ffmpeg',  # macOS Homebrew
+    ]
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    # Last resort: just return 'ffmpeg' and hope it's in PATH
+    return 'ffmpeg'
 
 
 # Global cleanup handler - only for incomplete downloads
@@ -655,7 +671,33 @@ class IDLIXDownloader:
             
             if not progress_callback:
                 print(f"Merging {total_segments} segments...\n")
-            result = subprocess.run(merge_cmd, text=True)
+            
+            # Run ffmpeg with proper output handling
+            try:
+                result = subprocess.run(
+                    merge_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=300  # 5 minute timeout for merge
+                )
+            except subprocess.TimeoutExpired:
+                if progress_callback:
+                    progress_callback({
+                        'status': 'failed',
+                        'percent': 100.0,
+                        'downloaded_segments': total_segments,
+                        'total_segments': total_segments,
+                        'failed_segments': 0,
+                        'speed_mbps': 0.0,
+                        'speed_segments': 0.0,
+                        'eta_seconds': 0,
+                        'bytes_downloaded': progress['bytes_downloaded'],
+                        'errors': ['Merge timeout: ffmpeg took too long']
+                    })
+                else:
+                    print(f"\n✗ Merge timeout: ffmpeg took too long")
+                return False
             
             if result.returncode == 0:
                 if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
@@ -698,20 +740,69 @@ class IDLIXDownloader:
                     
                     return True
                 else:
-                    if not progress_callback:
-                        print(f"\n✗ Merge failed: File is empty or doesn't exist")
+                    error_msg = f"Merge failed: File is empty or doesn't exist"
+                    if progress_callback:
+                        progress_callback({
+                            'status': 'failed',
+                            'percent': 100.0,
+                            'downloaded_segments': total_segments,
+                            'total_segments': total_segments,
+                            'failed_segments': 0,
+                            'speed_mbps': 0.0,
+                            'speed_segments': 0.0,
+                            'eta_seconds': 0,
+                            'bytes_downloaded': progress['bytes_downloaded'],
+                            'errors': [error_msg]
+                        })
+                    else:
+                        print(f"\n✗ {error_msg}")
                     return False
             else:
-                if not progress_callback:
-                    print(f"\n✗ Merge failed (ffmpeg error code: {result.returncode})")
+                error_msg = f"Merge failed (ffmpeg error code: {result.returncode})"
+                if result.stderr:
+                    error_msg += f"\nFFmpeg error: {result.stderr.strip()}"
+                
+                if progress_callback:
+                    progress_callback({
+                        'status': 'failed',
+                        'percent': 100.0,
+                        'downloaded_segments': total_segments,
+                        'total_segments': total_segments,
+                        'failed_segments': 0,
+                        'speed_mbps': 0.0,
+                        'speed_segments': 0.0,
+                        'eta_seconds': 0,
+                        'bytes_downloaded': progress['bytes_downloaded'],
+                        'errors': [error_msg]
+                    })
+                else:
+                    print(f"\n✗ {error_msg}")
                 return False
 
         except KeyboardInterrupt:
             # Keep cache for resume
             raise
         except Exception as e:
-            if not progress_callback:
-                print(f"\n✗ Download error: {e}")
+            import traceback
+            error_msg = f"Download error: {str(e)}"
+            traceback_str = traceback.format_exc()
+            
+            if progress_callback:
+                progress_callback({
+                    'status': 'failed',
+                    'percent': 0.0,
+                    'downloaded_segments': 0,
+                    'total_segments': 0,
+                    'failed_segments': 0,
+                    'speed_mbps': 0.0,
+                    'speed_segments': 0.0,
+                    'eta_seconds': 0,
+                    'bytes_downloaded': 0,
+                    'errors': [error_msg, traceback_str]
+                })
+            else:
+                print(f"\n✗ {error_msg}")
+                print(traceback_str)
             return False
 
 # Helper functions for interactive mode

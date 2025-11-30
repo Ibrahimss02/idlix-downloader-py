@@ -35,23 +35,38 @@ function startBackend() {
       stdio: ['ignore', 'pipe', 'pipe']
     });
     
+    // Buffer to accumulate stdout data
+    let stdoutBuffer = '';
+    
     // Parse stdout for port info
     backendProcess.stdout.on('data', (data) => {
-      const output = data.toString().trim();
-      console.log('Backend stdout:', output);
+      const output = data.toString();
+      stdoutBuffer += output;
       
-      try {
-        const json = JSON.parse(output);
-        if (json.status === 'ready' && json.port) {
-          backendPort = json.port;
-          backendReady = true;
-          console.log(`Backend ready on port ${backendPort}`);
-          resolve(backendPort);
-        } else if (json.status === 'error') {
-          reject(new Error(json.message));
+      // Log each line
+      const lines = output.split('\n');
+      lines.forEach(line => {
+        if (line.trim()) {
+          console.log('Backend stdout:', line.trim());
         }
-      } catch (e) {
-        // Ignore non-JSON output
+      });
+      
+      // Try to find JSON in the buffer
+      const jsonMatch = stdoutBuffer.match(/\{[^}]*"status"[^}]*\}/);
+      if (jsonMatch) {
+        try {
+          const json = JSON.parse(jsonMatch[0]);
+          if (json.status === 'ready' && json.port) {
+            backendPort = json.port;
+            backendReady = true;
+            console.log(`Backend ready on port ${backendPort}`);
+            resolve(backendPort);
+          } else if (json.status === 'error') {
+            reject(new Error(json.message));
+          }
+        } catch (e) {
+          // JSON parsing failed, continue waiting
+        }
       }
     });
     
@@ -62,6 +77,9 @@ function startBackend() {
     backendProcess.on('close', (code) => {
       console.log(`Backend process exited with code ${code}`);
       backendReady = false;
+      if (!backendReady) {
+        reject(new Error(`Backend process exited with code ${code}`));
+      }
     });
     
     backendProcess.on('error', (err) => {
