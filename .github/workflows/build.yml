@@ -228,11 +228,13 @@ jobs:
       with:
         path: artifacts
     
-    - name: Rename backend executables to avoid conflicts
+    - name: Organize artifacts to avoid conflicts
       run: |
-        mv artifacts/backend-linux/idlix-downloader artifacts/backend-linux/idlix-downloader-linux
-        mv artifacts/backend-macos/idlix-downloader artifacts/backend-macos/idlix-downloader-macos
-        mv artifacts/backend-windows/idlix-downloader.exe artifacts/backend-windows/idlix-downloader-windows.exe
+        # Keep backend executables in separate directories (already organized)
+        # Rename to platform-specific names for clarity in release
+        cp artifacts/backend-linux/idlix-downloader artifacts/backend-linux/idlix-downloader-linux
+        cp artifacts/backend-macos/idlix-downloader artifacts/backend-macos/idlix-downloader-macos
+        cp artifacts/backend-windows/idlix-downloader.exe artifacts/backend-windows/idlix-downloader-windows.exe
     
     - name: Display artifact structure
       run: ls -R artifacts/
@@ -254,14 +256,14 @@ jobs:
           ## 📦 Downloads
           
           ### Desktop Apps (Electron)
-          - **Windows**: `IDLIX-Downloader-Setup-*.exe` (Installer)
+          - **Windows**: `IDLIX-Downloader-Setup-*.exe` (Installer) or `IDLIX Downloader *.exe` (Portable, no install needed)
           - **Linux**: `IDLIX-Downloader-*.AppImage` (Portable) or `*.deb` (Debian/Ubuntu)
           - **macOS**: `IDLIX-Downloader-*.dmg` (Disk Image)
           
           ### CLI Tools (Python Backend)
-          - **Windows**: `idlix-downloader-windows.exe` (CLI only)
-          - **Linux**: `idlix-downloader-linux` (CLI only, requires ffmpeg)
-          - **macOS**: `idlix-downloader-macos` (CLI only, requires ffmpeg)
+          - **Windows**: `idlix-downloader-windows.exe` or `idlix-downloader.exe` (CLI only)
+          - **Linux**: `idlix-downloader-linux` or `idlix-downloader` (CLI only, requires ffmpeg)
+          - **macOS**: `idlix-downloader-macos` or `idlix-downloader` (CLI only, requires ffmpeg)
           
           ### Features
           - 🎬 Download videos from IDLIX
