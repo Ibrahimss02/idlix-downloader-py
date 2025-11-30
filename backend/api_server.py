@@ -537,7 +537,6 @@ async def resume_download(download_id: str, background_tasks: BackgroundTasks):
     restored_progress = {}
     if download.get('progress'):
         try:
-            import json
             restored_progress = json.loads(download['progress']) if isinstance(download['progress'], str) else download['progress']
         except:
             pass
