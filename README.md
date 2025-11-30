@@ -1,4 +1,8 @@
 # 🎬 IDLIX Downloader - Desktop App
+> ℹ️ **AI Assistance — Informational Notice**
+> 
+> This project received assistance from AI (Claude Sonnet 4.5). AI was used to generate code snippets, documentation, UI text, and design suggestions. All AI-generated content must be reviewed, tested, and adapted before use. The project maintainer is solely responsible for correctness, security, and compliance with third‑party licenses. Report any concerns via the repository issue tracker.
+
 
 Beautiful desktop application for downloading videos from IDLIX streaming platform with real-time progress tracking and subtitle support.
 
