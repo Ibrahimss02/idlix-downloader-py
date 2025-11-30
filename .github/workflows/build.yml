@@ -228,6 +228,12 @@ jobs:
       with:
         path: artifacts
     
+    - name: Rename backend executables to avoid conflicts
+      run: |
+        mv artifacts/backend-linux/idlix-downloader artifacts/backend-linux/idlix-downloader-linux
+        mv artifacts/backend-macos/idlix-downloader artifacts/backend-macos/idlix-downloader-macos
+        mv artifacts/backend-windows/idlix-downloader.exe artifacts/backend-windows/idlix-downloader-windows.exe
+    
     - name: Display artifact structure
       run: ls -R artifacts/
         
@@ -253,9 +259,9 @@ jobs:
           - **macOS**: `IDLIX-Downloader-*.dmg` (Disk Image)
           
           ### CLI Tools (Python Backend)
-          - **Windows**: `idlix-downloader.exe` (CLI only)
-          - **Linux**: `idlix-downloader` (CLI only, requires ffmpeg)
-          - **macOS**: `idlix-downloader` (CLI only, requires ffmpeg)
+          - **Windows**: `idlix-downloader-windows.exe` (CLI only)
+          - **Linux**: `idlix-downloader-linux` (CLI only, requires ffmpeg)
+          - **macOS**: `idlix-downloader-macos` (CLI only, requires ffmpeg)
           
           ### Features
           - 🎬 Download videos from IDLIX
