@@ -31,6 +31,7 @@
   "build": {
     "appId": "com.idlix.downloader",
     "productName": "IDLIX Downloader",
+    "publish": null,
     "directories": {
       "output": "dist-electron"
     },

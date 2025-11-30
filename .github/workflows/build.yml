@@ -131,8 +131,6 @@ jobs:
     - name: Build Electron app for Windows
       working-directory: electron-app
       run: npm run build:win
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Upload Windows Electron app
       uses: actions/upload-artifact@v4
@@ -170,8 +168,6 @@ jobs:
     - name: Build Electron app for Linux
       working-directory: electron-app
       run: npm run build:linux
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Upload Linux Electron app
       uses: actions/upload-artifact@v4
@@ -211,8 +207,6 @@ jobs:
     - name: Build Electron app for macOS
       working-directory: electron-app
       run: npm run build:mac
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Upload macOS Electron app
       uses: actions/upload-artifact@v4
