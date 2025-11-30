@@ -1,21 +1,4 @@
-#!/usr/bin/env python3
-"""Create PyInstaller spec file with API support (cross-platform)"""
-import sys
-import os
-
-# Detect platform and set FFmpeg binary name
-if sys.platform == 'win32':
-    ffmpeg_name = 'ffmpeg.exe'
-else:
-    ffmpeg_name = 'ffmpeg'
-
-# Check if FFmpeg exists
-ffmpeg_path = os.path.join(os.path.dirname(__file__), ffmpeg_name)
-if not os.path.exists(ffmpeg_path):
-    print(f"[WARNING] FFmpeg not found at {ffmpeg_path}")
-    print("[INFO] PyInstaller will fail if FFmpeg is required")
-
-spec_content = """# -*- mode: python ; coding: utf-8 -*-
+# -*- mode: python ; coding: utf-8 -*-
 import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
@@ -32,7 +15,7 @@ pydantic_imports = collect_submodules('pydantic')
 a = Analysis(
     ['idlix.py'],
     pathex=[],
-    binaries=[('FFMPEG_BINARY', '.')],
+    binaries=[],
     datas=[
         ('crypto_helper.py', '.'),
         ('backend/database.py', 'backend'),
@@ -129,15 +112,3 @@ exe = EXE(
     entitlements_file=None,
     icon=None,
 )
-"""
-
-# Replace FFMPEG_BINARY placeholder with actual filename
-spec_content = spec_content.replace('FFMPEG_BINARY', ffmpeg_name)
-
-with open('idlix_windows_api.spec', 'w', encoding='utf-8') as f:
-    f.write(spec_content)
-
-print('[OK] API-enabled spec file created: idlix_windows_api.spec')
-print(f'[OK] Using FFmpeg binary: {ffmpeg_name}')
-print('[OK] This spec includes FastAPI, Uvicorn, and database support')
-print('[OK] Use: pyinstaller --clean idlix_windows_api.spec')

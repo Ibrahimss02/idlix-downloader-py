@@ -1,201 +1,215 @@
-# IDLIX Video Downloader
+# 🎬 IDLIX Downloader - Desktop App
 
-Fast Python CLI for downloading videos from IDLIX streaming platform.
+Beautiful desktop application for downloading videos from IDLIX streaming platform with real-time progress tracking and subtitle support.
 
-## Features
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
 
-- ⚡ Fast Python-based CLI
-- 🔓 Bypasses Cloudflare protection
-- 📊 Interactive quality selection
-- 🎯 Automatic quality matching
-- 📁 N_m3u8DL-CLI integration
-- 💾 Clean output naming
+## ✨ Features
 
-## Installation
+- 🎨 **Modern Desktop UI** - Clean, intuitive Electron-based interface
+- 📊 **Real-time Progress** - Live download progress with speed and ETA
+- 💾 **Resume Downloads** - Automatically resume interrupted downloads
+- 📝 **Subtitle Support** - Auto-download subtitles when available
+- 🎯 **Quality Selection** - Choose from multiple video quality options
+- ⚙️ **Settings Panel** - Customize download paths and threads
+- 🔄 **Background Tasks** - Download queue management
+- 🚀 **Multi-threaded** - Fast downloads with configurable thread count
 
-```bash
-# Install dependencies
-pip3 install -r requirements.txt
+## 📦 Installation
 
-# Make executable
-chmod +x idlix.py
-```
+### Quick Start (Recommended)
 
-Or use the installation script:
-```bash
-./install.sh
-```
+Download the latest release for your platform:
 
-## Requirements
+**Windows:**
+- Download `IDLIX-Downloader-Setup-*.exe`
+- Run the installer
+- FFmpeg is bundled (no additional requirements)
 
-- Python 3.8+
-- curl-cffi (Cloudflare bypass)
-- beautifulsoup4 (HTML parsing)
-- pycryptodome (AES decryption)
-- m3u8 (Playlist parsing)
-- lxml (XML parser)
-- **N_m3u8DL-CLI** (for downloading - optional)
+**Linux:**
+- Download `IDLIX-Downloader-*.AppImage` (portable) or `*.deb` (Debian/Ubuntu)
+- For AppImage: `chmod +x IDLIX-Downloader-*.AppImage && ./IDLIX-Downloader-*.AppImage`
+- For .deb: `sudo dpkg -i idlix-downloader_*.deb`
+- Requires: `ffmpeg` (install via `sudo apt install ffmpeg`)
 
-### Installing N_m3u8DL-CLI
+**macOS:**
+- Download `IDLIX-Downloader-*.dmg`
+- Open and drag to Applications
+- Requires: `ffmpeg` (install via `brew install ffmpeg`)
 
-Download from: https://github.com/nilaoda/N_m3u8DL-CLI
-
-Or use ffmpeg as alternative:
-```bash
-ffmpeg -i "STREAM_URL" -c copy output.mp4
-```
-
-## Usage
-
-### Interactive Mode (Recommended)
+### Development Setup
 
 ```bash
-# Full interactive experience
-./idlix.py -u "https://tv10.idlixku.com/movie/example/"
+# Clone the repository
+git clone https://github.com/Ibrahimss02/idlix-downloader-py.git
+cd idlix-downloader-py
 
-# You'll see:
-# ============================================================
-# 📊 Available Quality Options
-# ============================================================
-#   [0]   1280x720  (  0.7 Mbps)
-#   [1]  1920x1080  (  1.7 Mbps)
-# ============================================================
-# 
-# 🎯 Select quality [0-1] (default: 0):
+# Setup Python environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r backend/requirements-api.txt
+
+# Build Python backend
+pyinstaller --clean idlix_windows_api.spec
+
+# Setup Electron app
+cd electron-app
+npm install
+npm start  # Development mode
+npm run build:linux    # Build for Linux
+npm run build:win      # Build for Windows
+npm run build:mac      # Build for macOS
 ```
 
-### Automatic Quality Selection
+## 🚀 Usage
+
+1. **Enter Video URL** - Paste IDLIX movie/series URL
+2. **Extract** - Click to fetch available quality options
+3. **Select Quality** - Choose your preferred video quality
+4. **Configure Download** - Set output path and filename
+5. **Download** - Click to start (subtitle checkbox auto-detected)
+6. **Track Progress** - Watch real-time download progress
+7. **Resume/Cancel** - Resume interrupted or cancel active downloads
+
+## 🛠️ Technical Stack
+
+### Backend (Python)
+- **FastAPI** - Modern async REST API
+- **Uvicorn** - ASGI server
+- **curl-cffi** - Cloudflare bypass
+- **aiosqlite** - Async database
+- **PyInstaller** - Standalone executable
+
+### Frontend (Electron)
+- **Electron 28** - Desktop app framework
+- **Node.js 20+** - JavaScript runtime
+- **electron-builder** - Multi-platform packaging
+- **electron-store** - Settings persistence
+
+## 📁 Project Structure
+
+```
+idlix-downloader-py/
+├── backend/              # Python FastAPI backend
+│   ├── api_server.py    # REST API endpoints
+│   └── database.py      # SQLite database layer
+├── electron-app/        # Electron desktop app
+│   ├── src/
+│   │   ├── main/       # Main process (Node.js)
+│   │   └── renderer/   # Renderer process (HTML/CSS/JS)
+│   └── package.json    # Electron dependencies
+├── idlix.py            # Core downloader logic
+├── crypto_helper.py    # AES decryption utilities
+├── build_backend.sh    # Backend build script
+└── idlix_windows_api.spec  # PyInstaller spec
+```
+
+## 🔧 Building from Source
+
+### Prerequisites
+- Python 3.10+
+- Node.js 20+
+- FFmpeg (for merging video segments)
+- PyInstaller 6.0+
+
+### Build Backend
+
+**Linux/macOS:**
+```bash
+./build_backend.sh
+```
+
+**Windows:**
+```bash
+python create_spec_api.py
+pyinstaller --clean idlix_windows_api.spec
+```
+
+### Build Desktop App
 
 ```bash
-# Specify quality directly
-./idlix.py -u "URL" -q 1080p
-./idlix.py -u "URL" -q 720p
-./idlix.py -u "URL" -q 0    # Select by index
+cd electron-app
+npm install
+npm run build:linux    # Outputs: .AppImage, .deb
+npm run build:win      # Outputs: .exe installer
+npm run build:mac      # Outputs: .dmg
 ```
 
-### Advanced Options
+## 🐛 Troubleshooting
+
+### Backend fails to start
+- Check if port is already in use
+- Ensure Python backend was built correctly
+- Check logs in terminal output
+
+### FFmpeg not found (Linux/macOS)
+```bash
+# Ubuntu/Debian
+sudo apt install ffmpeg
+
+# macOS
+brew install ffmpeg
+
+# Arch Linux
+sudo pacman -S ffmpeg
+```
+
+### Download stuck at 100%
+- The app is merging video segments with FFmpeg
+- This may take 30-60 seconds for large files
+- Check terminal output for detailed logs
+
+### Cloudflare errors
+- curl-cffi handles Cloudflare automatically
+- Update dependencies: `pip install --upgrade curl-cffi`
+
+## 📝 Development
+
+### Run in Development Mode
 
 ```bash
-# Custom output directory
-./idlix.py -u "URL" -o ~/Downloads
+# Terminal 1: Start backend (built executable)
+./dist/idlix-downloader --api-server
 
-# Use direct embed URL (skip extraction)
-./idlix.py -e "https://jeniusplay.com/player/index.php?data=xxx"
-
-# Show stream URL without downloading
-./idlix.py -u "URL" --no-download
-
-# Extract embed URL only
-./idlix.py -u "URL" --extract-only
-
-# Custom base URL
-./idlix.py -u "URL" -b "https://tv10.idlixku.com/"
+# Terminal 2: Start Electron
+cd electron-app
+npm start
 ```
 
-## Quality Formats
+### Debug Mode
 
-Quality can be specified as:
-- **Resolution**: `1080p`, `720p`, `480p`
-- **Exact**: `1920x1080`, `1280x720`
-- **Index**: `0`, `1`, `2` (0 is highest quality)
+Backend logs appear in the terminal where you launched the app.
+Frontend console: Open Developer Tools (Ctrl+Shift+I / Cmd+Option+I)
 
-## Examples
+## 🤝 Contributing
 
-```bash
-# Interactive download
-./idlix.py -u "https://tv10.idlixku.com/movie/harry-potter-2009/"
+Contributions are welcome! Please:
 
-# Auto-select 1080p, save to Downloads
-./idlix.py -u "URL" -q 1080p -o ~/Downloads
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-# Just show stream URL (no download)
-./idlix.py -u "URL" --no-download
+## 📄 License
 
-# Extract embed URL for later use
-./idlix.py -u "URL" --extract-only
+Apache License 2.0 - See [LICENSE](LICENSE) file for details
 
-# Use extracted embed URL directly
-./idlix.py -e "https://jeniusplay.com/player/index.php?data=xxx" -q 720p
-```
+## 🙏 Acknowledgments
 
-## How It Works
+- **curl-cffi** for Cloudflare bypass
+- **Electron** for cross-platform desktop framework
+- **FastAPI** for modern Python API
+- **FFmpeg** for video processing
 
-1. 🔍 Fetches IDLIX page using Chrome-like requests (curl-cffi)
-2. 📋 Extracts video ID from HTML metadata
-3. �� Requests encrypted embed URL from API
-4. 🔓 Decrypts embed URL using AES
-5. 📊 Fetches M3U8 playlist from JeniusPlay
-6. 🎯 Shows interactive quality selector
-7. ⬇️ Downloads with N_m3u8DL-CLI (or shows URL)
+## 📧 Contact
 
-## Interactive Quality Selection
+- GitHub: [@Ibrahimss02](https://github.com/Ibrahimss02)
+- Repository: [idlix-downloader-py](https://github.com/Ibrahimss02/idlix-downloader-py)
 
-The tool provides a beautiful interactive interface:
+---
 
-```
-============================================================
-📊 Available Quality Options
-============================================================
-  [0]   1280x720  (  0.7 Mbps)
-  [1]  1920x1080  (  1.7 Mbps)
-============================================================
-
-🎯 Select quality [0-1] (default: 0): 1
-✅ Selected: 1920x1080 (1.7 Mbps)
-
-⬇️  Starting download...
-📁 Output: ./Harry Potter and the Half-Blood Prince (2009).mp4
-🚀 Running N_m3u8DL-CLI...
-```
-
-## N_m3u8DL-CLI Integration
-
-The tool automatically:
-- ✅ Finds N_m3u8DL-CLI in PATH
-- ✅ Uses optimal settings (16 threads)
-- ✅ Cleans up temporary files
-- ✅ Shows progress during download
-- ✅ Provides manual download command if tool not found
-
-If N_m3u8DL-CLI is not installed, the tool shows the stream URL and manual download commands.
-
-## Troubleshooting
-
-### N_m3u8DL-CLI not found
-```bash
-# Download N_m3u8DL-CLI from:
-https://github.com/nilaoda/N_m3u8DL-CLI
-
-# Or use ffmpeg:
-ffmpeg -i "STREAM_URL" -c copy output.mp4
-```
-
-### Cloudflare Error
-curl-cffi handles Cloudflare automatically. If you get errors:
-- Update curl-cffi: `pip3 install --upgrade curl-cffi`
-- Try a different Chrome version in the code
-
-### M3U8 URL Expired
-M3U8 URLs expire after ~30 minutes. Re-extract if expired:
-```bash
-./idlix.py -u "URL" --extract-only  # Get fresh embed URL
-./idlix.py -e "NEW_EMBED_URL"       # Use new embed URL
-```
-
-## Performance
-
-- Extraction: ~3-5 seconds
-- M3U8 fetch: ~1-2 seconds
-- Success rate: ~95%
-- Download speed: Limited by your connection and N_m3u8DL-CLI
-
-## License
-
-Apache License
-
-## Notes
-
-- Cloudflare bypass uses curl-cffi's Chrome emulation
-- M3U8 URLs are temporary (valid ~30 minutes)
-- Download requires N_m3u8DL-CLI or ffmpeg
-- Interactive mode works in all terminals
+Made with 💜 by @ibrahimss02

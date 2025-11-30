@@ -3,8 +3,16 @@
   "version": "1.0.0",
   "description": "IDLIX Video Downloader - Desktop App",
   "main": "src/main/index.js",
-  "author": "Your Name",
+  "homepage": "https://github.com/Ibrahimss02/idlix-downloader-py",
+  "author": {
+    "name": "Ibrahim",
+    "email": "ibrahim@example.com"
+  },
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ibrahimss02/idlix-downloader-py.git"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
@@ -32,8 +40,8 @@
     ],
     "extraResources": [
       {
-        "from": "../dist/idlix-downloader${os === 'win' ? '.exe' : ''}",
-        "to": "backend/idlix-downloader${os === 'win' ? '.exe' : ''}"
+        "from": "../dist/idlix-downloader",
+        "to": "backend/idlix-downloader"
       }
     ],
     "win": {
@@ -48,7 +56,8 @@
     "linux": {
       "target": ["AppImage", "deb"],
       "icon": "assets/icon.png",
-      "category": "Utility"
+      "category": "Utility",
+      "maintainer": "Ibrahim <ibrahim@example.com>"
     }
   }
 }

@@ -1,8 +1,8 @@
-name: Build Executables
+name: Build Executables and Desktop Apps
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, feature/electron ]
     tags:
       - 'v*'
   pull_request:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
+  build-backend-windows:
     runs-on: windows-latest
     
     steps:
@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller requests vtt-to-srt3
+        pip install curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller requests vtt-to-srt3 fastapi uvicorn aiosqlite
         
     - name: Download FFmpeg
       run: |
@@ -36,25 +36,22 @@ jobs:
         Remove-Item "ffmpeg.zip"
       shell: pwsh
       
-    - name: Create PyInstaller spec
-      run: python create_spec_windows.py
-      
-    - name: Build executable
-      run: pyinstaller --clean idlix_windows.spec
-      
-    - name: Test executable
+    - name: Update spec to bundle FFmpeg on Windows
       run: |
-        dist\idlix-downloader.exe --help
-      continue-on-error: true
+        (Get-Content idlix_windows_api.spec) -replace 'binaries=\[\]', "binaries=[('ffmpeg.exe', '.')]" | Set-Content idlix_windows_api.spec
+      shell: pwsh
       
-    - name: Upload Windows executable
+    - name: Build backend executable
+      run: pyinstaller --clean idlix_windows_api.spec
+      
+    - name: Upload Windows backend
       uses: actions/upload-artifact@v4
       with:
-        name: idlix-downloader-windows
+        name: backend-windows
         path: dist/idlix-downloader.exe
         retention-days: 30
 
-  build-linux:
+  build-backend-linux:
     runs-on: ubuntu-latest
     
     steps:
@@ -69,61 +66,211 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install --break-system-packages curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller requests vtt-to-srt3
+        pip install curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller requests vtt-to-srt3 fastapi uvicorn aiosqlite
         
-    - name: Download FFmpeg
-      run: |
-        wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-        tar -xf ffmpeg-release-amd64-static.tar.xz
-        cp ffmpeg-*-static/ffmpeg .
-        rm -rf ffmpeg-*-static*
-        chmod +x ffmpeg
+    - name: Build backend executable (uses system ffmpeg)
+      run: pyinstaller --clean idlix_windows_api.spec
         
-    - name: Build executable
-      run: |
-        chmod +x build_executable.sh
-        ./build_executable.sh
-        
-    - name: Test executable
-      run: |
-        ./dist/idlix-downloader --help
-      continue-on-error: true
-      
-    - name: Upload Linux executable
+    - name: Upload Linux backend
       uses: actions/upload-artifact@v4
       with:
-        name: idlix-downloader-linux
+        name: backend-linux
         path: dist/idlix-downloader
         retention-days: 30
 
+  build-backend-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install curl-cffi beautifulsoup4 m3u8 pyperclip pycryptodome certifi pyinstaller requests vtt-to-srt3 fastapi uvicorn aiosqlite
+        
+    - name: Build backend executable (uses system ffmpeg)
+      run: pyinstaller --clean idlix_windows_api.spec
+        
+    - name: Upload macOS backend
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-macos
+        path: dist/idlix-downloader
+        retention-days: 30
+
+  build-electron-windows:
+    needs: build-backend-windows
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download Windows backend
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-windows
+        path: dist
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install Electron dependencies
+      working-directory: electron-app
+      run: npm install
+      
+    - name: Build Electron app for Windows
+      working-directory: electron-app
+      run: npm run build:win
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload Windows Electron app
+      uses: actions/upload-artifact@v4
+      with:
+        name: electron-windows
+        path: electron-app/dist-electron/*.exe
+        retention-days: 30
+
+  build-electron-linux:
+    needs: build-backend-linux
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download Linux backend
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-linux
+        path: dist
+        
+    - name: Make backend executable
+      run: chmod +x dist/idlix-downloader
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install Electron dependencies
+      working-directory: electron-app
+      run: npm install
+      
+    - name: Build Electron app for Linux
+      working-directory: electron-app
+      run: npm run build:linux
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload Linux Electron app
+      uses: actions/upload-artifact@v4
+      with:
+        name: electron-linux
+        path: |
+          electron-app/dist-electron/*.AppImage
+          electron-app/dist-electron/*.deb
+        retention-days: 30
+
+  build-electron-macos:
+    needs: build-backend-macos
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download macOS backend
+      uses: actions/download-artifact@v4
+      with:
+        name: backend-macos
+        path: dist
+        
+    - name: Make backend executable
+      run: chmod +x dist/idlix-downloader
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Install Electron dependencies
+      working-directory: electron-app
+      run: npm install
+      
+    - name: Build Electron app for macOS
+      working-directory: electron-app
+      run: npm run build:mac
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload macOS Electron app
+      uses: actions/upload-artifact@v4
+      with:
+        name: electron-macos
+        path: electron-app/dist-electron/*.dmg
+        retention-days: 30
+
   create-release:
-    needs: [build-windows, build-linux]
+    needs: [build-backend-windows, build-backend-linux, build-backend-macos, build-electron-windows, build-electron-linux, build-electron-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     
     steps:
-    - name: Download Windows artifact
+    - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        name: idlix-downloader-windows
-        path: ./windows
-        
-    - name: Download Linux artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: idlix-downloader-linux
-        path: ./linux
+        path: artifacts
         
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          windows/idlix-downloader.exe
-          linux/idlix-downloader
+          artifacts/backend-windows/idlix-downloader.exe
+          artifacts/backend-linux/idlix-downloader
+          artifacts/backend-macos/idlix-downloader
+          artifacts/electron-windows/*.exe
+          artifacts/electron-linux/*.AppImage
+          artifacts/electron-linux/*.deb
+          artifacts/electron-macos/*.dmg
         draft: false
         prerelease: false
         generate_release_notes: true
+        body: |
+          ## 📦 Downloads
+          
+          ### Desktop Apps (Electron)
+          - **Windows**: `IDLIX-Downloader-Setup-*.exe` (Installer)
+          - **Linux**: `IDLIX-Downloader-*.AppImage` (Portable) or `*.deb` (Debian/Ubuntu)
+          - **macOS**: `IDLIX-Downloader-*.dmg` (Disk Image)
+          
+          ### CLI Tools (Python Backend)
+          - **Windows**: `idlix-downloader.exe` (CLI only)
+          - **Linux**: `idlix-downloader` (CLI only, requires ffmpeg)
+          - **macOS**: `idlix-downloader` (CLI only, requires ffmpeg)
+          
+          ### Features
+          - 🎬 Download videos from IDLIX
+          - 📝 Auto-download subtitles (if available)
+          - 🎯 Multiple quality options
+          - 📊 Real-time progress tracking
+          - 💾 Resume interrupted downloads
+          - ⚙️ Settings panel with customization
+          
+          ### Requirements
+          - Desktop apps: No additional requirements (FFmpeg bundled for Windows)
+          - CLI tools: FFmpeg must be installed on your system
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

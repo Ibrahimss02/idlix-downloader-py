@@ -12,6 +12,7 @@
     <header class="header">
       <h1>🎬 IDLIX Downloader</h1>
       <p class="subtitle">Download videos with ease</p>
+      <button id="settingsBtn" class="settings-btn" title="Settings">⚙️</button>
     </header>
 
     <!-- Main Content -->
@@ -59,6 +60,16 @@
               placeholder="Leave empty for auto-generated name"
             />
           </div>
+          <div class="config-item checkbox-item">
+            <label>
+              <input 
+                type="checkbox" 
+                id="downloadSubtitle" 
+                class="checkbox-input"
+              />
+              <span>📝 Download subtitle (if available)</span>
+            </label>
+          </div>
         </div>
         <button id="downloadBtn" class="btn btn-success" disabled>
           Start Download
@@ -72,6 +83,11 @@
           <p class="empty-state">No active downloads</p>
         </div>
       </section>
+
+      <!-- footer -->
+      <footer class="footer">
+        <p class="subtitle">Made with 🫶🏻 by @ibrahimss02</p>
+      </footer>
     </main>
 
     <!-- Settings Panel (Optional) -->
